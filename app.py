@@ -88,9 +88,44 @@ def logout(): session.clear(); return redirect("/")
 def lobby():
  u=current_user()
  chars=''.join(f'<button class="fighter" onclick="pick(\'{x["id"]}\',this)"><b>{x["name"]}</b><br>{x["style"]}<br>HP {x["hp"]} · 공격 {x["power"]}</button>' for x in FIGHTERS)
- body=f'''<main class="wrap"><p class="lime">PLAYER LOBBY</p><h1>안녕하세요, {u["nickname"]}!</h1><div class="panel">코인 <b id="coins">{u["coins"]}</b> C　·　승리 <b>{u["wins"]}</b></div><section class="panel"><h2>캐릭터 선택</h2><div class="grid">{chars}</div><div class="row"><button class="primary" onclick="joinQueue()">온라인 1대1 찾기</button><button onclick="practice()">AI 연습</button></div><p id="status" class="muted">캐릭터를 고르고 대전을 시작하세요.</p><div id="battle" hidden><h2><span id="p1">나</span> VS <span id="p2">상대</span></h2><div>내 HP <span id="hp0">100</span></div><div class="health"><div id="bar0" style="width:100%"></div></div><div>상대 HP <span id="hp1">100</span></div><div class="health"><div id="bar1" style="width:100%"></div></div><div class="row"><button onclick="act('attack')">공격</button><button onclick="act('guard')">방어</button></div><div class="logs" id="logs"></div></div></section><section class="panel"><h2>진행 중인 대전 관전</h2><button onclick="refreshRooms()">목록 새로고침</button><div id="rooms">불러오는 중…</div></section></main><script>
-const socket=io();let character='rook',mode='online',hp=[100,100];function pick(id,b){{character=id;document.querySelectorAll('.fighter').forEach(x=>x.classList.remove('selected'));b.classList.add('selected')}}function status(t){{document.getElementById('status').textContent=t}}function joinQueue(){{mode='online';socket.emit('queue_join',{{character}});status('상대를 찾는 중입니다…')}}function act(action){{if(mode==='online')socket.emit('fight_action',{{action}});else if(mode==='practice'){{let d=action==='attack'?12:0;hp[1]=Math.max(0,hp[1]-d);if(Math.random()>.35)hp[0]=Math.max(0,hp[0]-8);update();document.getElementById('logs').textContent+='\\n'+(d?'내 공격!':'방어 자세')+' · AI 반격';if(hp[1]===0)status('연습 승리!')}}}}function practice(){{mode='practice';hp=[100,100];update();document.getElementById('battle').hidden=false;document.getElementById('p1').textContent='나';document.getElementById('p2').textContent='AI';document.getElementById('logs').textContent='연습 시작';status('AI 연습 중')}}function update(){{hp.forEach((v,i)=>{{document.getElementById('hp'+i).textContent=v;document.getElementById('bar'+i).style.width=v+'%'}})}}function refreshRooms(){{fetch('/api/rooms').then(r=>r.json()).then(rs=>{{let e=document.getElementById('rooms');e.replaceChildren();let live=rs.filter(x=>x.status==='playing');if(!live.length)e.textContent='현재 관전 가능한 대전이 없어요.';live.forEach(x=>{{let b=document.createElement('button');b.textContent='대전 '+x.id+' 관전';b.onclick=()=>socket.emit('spectate',{{room:x.id}});e.append(b)}})}})}}socket.on('connect',refreshRooms);socket.on('queue_status',d=>status(d.message));socket.on('match_found',d=>{{mode='online';hp=[100,100];update();document.getElementById('battle').hidden=false;document.getElementById('p1').textContent=d.players[0].nickname;document.getElementById('p2').textContent=d.players[1].nickname;status('대전 시작!');refreshRooms()}});socket.on('fight_update',d=>{{hp=d.hp;update();document.getElementById('logs').textContent=d.logs.join('\\n');if(d.winner)status(d.winner+' 승리!')}});socket.on('spectate_state',d=>{{mode='spectate';hp=d.hp;update();document.getElementById('battle').hidden=false;document.getElementById('p1').textContent=d.players[0].nickname;document.getElementById('p2').textContent=d.players[1].nickname;document.getElementById('logs').textContent=d.logs.join('\\n');status('관전 중')}});socket.on('match_finished',d=>{{status(d.message||d.winner+' 승리! 보상 '+d.reward+'C');fetch('/api/me').then(r=>r.json()).then(x=>document.getElementById('coins').textContent=x.coins);refreshRooms()}});</script>'''
+ body=f'''<main class="wrap"><p class="lime">STREET E / FIGHT CLUB</p><h1>전투 준비</h1><div class="panel">플레이어 <b>{u["nickname"]}</b>　·　코인 <b id="coins">{u["coins"]}</b> C　·　승리 <b>{u["wins"]}</b></div>
+<section class="panel"><h2>파이터 선택</h2><div class="grid">{chars}</div><div class="row"><button class="primary" onclick="joinQueue()">온라인 1대1 찾기</button><button onclick="practice()">AI 연습</button><button onclick="stopFight()">전투 나가기</button></div><p id="status" class="muted">파이터를 선택하고 전투를 시작하세요.</p></section>
+<section id="fightPanel" class="panel" hidden><div class="fight-head"><div><b id="p1">PLAYER</b><div class="health"><div id="bar0" style="width:100%"></div></div><span id="hp0">100</span> HP</div><div class="vs">VS</div><div style="text-align:right"><b id="p2">RIVAL</b><div class="health"><div id="bar1" style="width:100%"></div></div><span id="hp1">100</span> HP</div></div>
+<canvas id="arena" width="900" height="420" aria-label="격투 게임 화면"></canvas><div class="controls-note">이동 <b>A / D</b> · 점프 <b>W</b> · 빠른 공격 <b>J</b> · 강공격 <b>K</b> · 필살기 <b>L</b></div><div class="mobile-controls"><button onpointerdown="keys.left=true" onpointerup="keys.left=false" onpointerleave="keys.left=false">◀</button><button onpointerdown="keys.right=true" onpointerup="keys.right=false" onpointerleave="keys.right=false">▶</button><button onpointerdown="jump()">점프</button><button onpointerdown="attack('j')">J 공격</button><button onpointerdown="attack('k')">K 강공격</button><button onpointerdown="attack('l')">필살기</button></div><div id="logs" class="logs">대전 준비 중…</div></section>
+<section class="panel"><h2>진행 중인 대전</h2><button onclick="refreshRooms()">목록 새로고침</button><div id="rooms">불러오는 중…</div></section></main>
+<style>
+#arena{display:block;width:100%;height:auto;max-height:420px;background:#171b20;border:1px solid #454b4f;image-rendering:pixelated;margin-top:14px}
+.fight-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px}.vs{font-weight:900;color:#d9ff62;font-size:24px}.controls-note{padding:12px;color:#c7c9bf;font-size:14px}.mobile-controls{display:flex;gap:8px;flex-wrap:wrap}.mobile-controls button{touch-action:none;user-select:none}.health{height:13px;background:#63322d;margin:7px 0}.health div{background:#d9ff62;height:100%;transition:width .1s}
+@media(max-width:600px){#arena{max-height:none}.controls-note{font-size:12px}}
+</style>
+<script>
+const socket=typeof io==='function'?io():null;
+let character='rook',mode='idle',roomId=null,raf=0,lastSend=0,lastAttack=0,aiClock=0;
+const keys={left:false,right:false},fighters={};
+const canvas=document.getElementById('arena'),ctx=canvas.getContext('2d');
+let me={x:170,y:300,vx:0,vy:0,hp:100,face:1,ground:true,anim:0,attack:0,color:'#d9ff62'};
+let foe={x:700,y:300,vx:0,vy:0,hp:100,face:-1,ground:true,anim:0,attack:0,color:'#ff6a58'};
+const fighterColors={rook:'#d9ff62',blaze:'#ff6a58',moss:'#70cf8b',volt:'#62c8ff',nova:'#d7a2ff',frost:'#c4e8ff',echo:'#ffbd61'};
+function pick(id,b){character=id;document.querySelectorAll('.fighter').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');me.color=fighterColors[id]||'#d9ff62'}
+function status(t){document.getElementById('status').textContent=t}
+function log(t){let e=document.getElementById('logs');e.textContent=(t+'\n'+e.textContent).slice(0,700)}
+function showFight(){document.getElementById('fightPanel').hidden=false;cancelAnimationFrame(raf);frame()}
+function practice(){mode='practice';roomId=null;me={x:170,y:300,vx:0,vy:0,hp:100,face:1,ground:true,anim:0,attack:0,color:fighterColors[character]||'#d9ff62'};foe={x:700,y:300,vx:0,vy:0,hp:100,face:-1,ground:true,anim:0,attack:0,color:'#ff6a58'};document.getElementById('p1').textContent='YOU';document.getElementById('p2').textContent='CPU';document.getElementById('logs').textContent='훈련 시작!';status('AI 연습 중 · 키보드로 조작하세요');showFight()}
+function joinQueue(){if(!socket){status('온라인 연결을 불러오지 못했어요. 새로고침해 주세요.');return}mode='online';status('상대를 찾는 중… 다른 플레이어가 들어오면 바로 시작합니다.');socket.emit('queue_join',{character})}
+function stopFight(){mode='idle';roomId=null;cancelAnimationFrame(raf);document.getElementById('fightPanel').hidden=true;status('전투를 나갔습니다.')}
+function jump(){if(me.ground){me.vy=-13;me.ground=false}}
+function attack(kind){if(mode==='idle'||mode==='spectate'||performance.now()-lastAttack<260)return;lastAttack=performance.now();me.attack=kind==='l'?28:kind==='k'?18:10;me.anim=me.attack;let damage=kind==='l'?25:kind==='k'?15:8;log(kind==='l'?'필살기!':kind==='k'?'강공격!':'빠른 공격!');if(mode==='practice'){if(Math.abs(me.x-foe.x)<125&&Math.abs(me.y-foe.y)<70){foe.hp=Math.max(0,foe.hp-damage);log('AI에게 '+damage+' 피해!')}return}if(mode==='online'&&socket)socket.emit('fighter_hit',{damage,range:Math.abs(me.x-foe.x),height:Math.abs(me.y-foe.y),kind})}
+function updateBars(){for(let i=0;i<2;i++){let p=i?foe:me;document.getElementById('hp'+i).textContent=p.hp;document.getElementById('bar'+i).style.width=p.hp+'%'}}
+function drawFighter(p,label){ctx.save();ctx.translate(p.x,p.y);ctx.scale(p.face,1);let swing=p.attack>0?Math.min(42,p.attack*1.5):0;ctx.fillStyle='rgba(0,0,0,.32)';ctx.beginPath();ctx.ellipse(0,4,31,8,0,0,Math.PI*2);ctx.fill();ctx.fillStyle=p.color;ctx.fillRect(-17,-65,34,42);ctx.fillStyle='#e6b995';ctx.beginPath();ctx.arc(0,-78,15,0,Math.PI*2);ctx.fill();ctx.fillStyle='#222';ctx.fillRect(4,-82,9,4);ctx.fillStyle=p.color;ctx.fillRect(-15,-24,12,23);ctx.fillRect(4,-24,12,23);ctx.fillStyle='#d4d5d0';ctx.fillRect(-20,-57,12,25);ctx.fillRect(8,-57,12,25);ctx.fillStyle=p.color;ctx.fillRect(12,-55,28+swing,-11);ctx.fillStyle='#fff';ctx.fillRect(30+swing,-66,12,12);ctx.restore();ctx.fillStyle='#f1f0e8';ctx.font='12px Arial';ctx.textAlign='center';ctx.fillText(label,p.x, p.y-102)}
+function draw(){ctx.clearRect(0,0,900,420);let g=ctx.createLinearGradient(0,0,0,420);g.addColorStop(0,'#202b37');g.addColorStop(1,'#151719');ctx.fillStyle=g;ctx.fillRect(0,0,900,420);ctx.fillStyle='#29323a';for(let x=0;x<900;x+=60){ctx.fillRect(x,105,2,195);ctx.fillRect(x+10,130,30,3)}ctx.fillStyle='#363a36';ctx.fillRect(0,325,900,95);ctx.strokeStyle='#6a725d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,325);ctx.lineTo(900,325);ctx.stroke();for(let x=0;x<900;x+=45){ctx.fillStyle='#41463d';ctx.fillRect(x,350,24,2)}drawFighter(me,mode==='practice'?'YOU':'P1');drawFighter(foe,mode==='practice'?'CPU':'P2');if(me.attack>0){ctx.fillStyle='rgba(217,255,98,.22)';ctx.fillRect(me.x+(me.face>0?12:-100),me.y-78,88,50)}}
+function frame(){if(mode==='idle')return;const now=performance.now(),dt=1;me.vx=(keys.left?-5:0)+(keys.right?5:0);if(me.x<foe.x)me.face=1;else me.face=-1;if(mode==='practice'){aiClock+=dt;if(Math.abs(foe.x-me.x)>100)foe.x+=(foe.x>me.x?-1:1)*1.15;else if(aiClock%70<2&&Math.random()>.25){me.hp=Math.max(0,me.hp-5);log('AI 반격! -5 HP')}}me.x=Math.max(35,Math.min(865,me.x+me.vx));me.vy+=.65;me.y+=me.vy;if(me.y>=300){me.y=300;me.vy=0;me.ground=true}if(me.attack>0)me.attack=Math.max(0,me.attack-1);if(mode==='practice'){foe.x=Math.max(35,Math.min(865,foe.x));foe.face=foe.x>me.x?-1:1;if(foe.hp<=0){status('연습 승리! 다시 AI 연습을 눌러 재시작할 수 있어요.');mode='idle'}if(me.hp<=0){status('연습 종료! 다시 AI 연습을 눌러 재도전하세요.');mode='idle'}}if(mode==='online'&&socket&&now-lastSend>50){lastSend=now;socket.emit('fighter_state',{x:me.x,y:me.y,face:me.face,color:me.color})}draw();updateBars();if(mode!=='idle')raf=requestAnimationFrame(frame)}
+window.addEventListener('keydown',e=>{let k=e.key.toLowerCase();if(['a','d','w','j','k','l',' '].includes(k))e.preventDefault();if(k==='a')keys.left=true;if(k==='d')keys.right=true;if(k==='w')jump();if(k==='j'||k==='k'||k==='l')attack(k)});
+window.addEventListener('keyup',e=>{if(e.key.toLowerCase()==='a')keys.left=false;if(e.key.toLowerCase()==='d')keys.right=false});
+function refreshRooms(){fetch('/api/rooms').then(r=>r.json()).then(rs=>{let e=document.getElementById('rooms');e.replaceChildren();let live=rs.filter(x=>x.status==='playing');if(!live.length){e.textContent='현재 진행 중인 대전이 없어요.';return}live.forEach(x=>{let b=document.createElement('button');b.textContent='대전 '+x.id+' 관전';b.onclick=()=>socket&&socket.emit('spectate',{room:x.id});e.append(b)})}).catch(()=>{})}
+if(socket){socket.on('connect',refreshRooms);socket.on('queue_status',d=>status(d.message));socket.on('match_found',d=>{mode='online';roomId=d.room;me.hp=100;foe.hp=100;me.x=d.index===0?170:700;foe.x=d.index===0?700:170;me.face=me.x<foe.x?1:-1;document.getElementById('p1').textContent=d.players[d.index||0].nickname;document.getElementById('p2').textContent=d.players[(d.index===0?1:0)].nickname;document.getElementById('logs').textContent='대전 시작!';status('대전 시작!');showFight();refreshRooms()});socket.on('fighter_state',d=>{if(mode==='online'){foe.x=d.x;foe.y=d.y;foe.face=d.face;foe.color=d.color||'#ff6a58'}});socket.on('fighter_hit',d=>{if(mode==='online'){foe.hp=d.hp;me.hp=d.oppHp;log(d.line);updateBars();if(d.winner)status(d.winner+' 승리!')}});socket.on('fight_update',d=>{if(mode==='online'){me.hp=d.hp[0];foe.hp=d.hp[1];updateBars()}});socket.on('match_finished',d=>{status(d.message||d.winner+' 승리!');fetch('/api/me').then(r=>r.json()).then(x=>document.getElementById('coins').textContent=x.coins);refreshRooms()});socket.on('spectate_state',d=>{mode='spectate';me.hp=d.hp[0];foe.hp=d.hp[1];document.getElementById('p1').textContent=d.players[0].nickname;document.getElementById('p2').textContent=d.players[1].nickname;status('관전 중');showFight()})}
+</script>'''
  return page("로비",body)
+
 @app.route("/api/me")
 @require_login
 def api_me():
@@ -145,7 +180,7 @@ def queue_join(data):
  for rid,r in list(rooms.items()):
   if r["status"]=="waiting" and len(r["players"])==1:
    r["players"].append({"sid":request.sid,"uid":u["id"],"nickname":u["nickname"],"character":char});r["status"]="playing";sid_room[request.sid]=rid;sid_room[r["players"][0]["sid"]]=rid;join_room(rid)
-   emit("match_found",{"room":rid,"players":[{"nickname":p["nickname"],"character":p["character"]} for p in r["players"]]},room=rid);emit("fight_update",{"hp":r["hp"],"logs":r["logs"],"turn":0,"winner":None},room=rid);return
+   emit("match_found",{"room":rid,"index":1,"players":[{"nickname":p["nickname"],"character":p["character"]} for p in r["players"]]},to=r["players"][1]["sid"]);emit("match_found",{"room":rid,"index":0,"players":[{"nickname":p["nickname"],"character":p["character"]} for p in r["players"]]},to=r["players"][0]["sid"]);emit("fight_update",{"hp":r["hp"],"logs":r["logs"],"turn":0,"winner":None},room=rid);return
  rid=secrets.token_hex(3);rooms[rid]={"players":[{"sid":request.sid,"uid":u["id"],"nickname":u["nickname"],"character":char}],"spectators":[],"status":"waiting","hp":[100,100],"logs":["상대를 기다리는 중..."],"turn":0,"guarding":None};sid_room[request.sid]=rid;join_room(rid);emit("queue_status",{"message":"상대를 찾는 중입니다. 다른 플레이어가 대기열에 들어오면 연결됩니다."})
 @socketio.on("spectate")
 def spectate(data):
@@ -171,6 +206,39 @@ def fight_action(data):
   with db() as c: c.execute("UPDATE users SET wins=wins+1,coins=coins+50 WHERE id=?",(player["uid"],));c.execute("UPDATE users SET coins=coins+10 WHERE id=?",(r["players"][opp]["uid"],))
  emit("fight_update",{"hp":r["hp"],"logs":r["logs"],"turn":r["turn"],"winner":winner["nickname"] if winner else None},room=rid)
  if winner: emit("match_finished",{"winner":winner["nickname"],"reward":50},room=rid)
+@socketio.on("fighter_state")
+def fighter_state(data):
+ rid=sid_room.get(request.sid);r=rooms.get(rid or "")
+ if not r or r["status"]!="playing": return
+ idx=next((i for i,p in enumerate(r["players"]) if p["sid"]==request.sid),None)
+ if idx is None:return
+ try:
+  x=max(25,min(875,float(data.get("x",100))));y=max(100,min(300,float(data.get("y",300))));face=1 if float(data.get("face",1))>=0 else -1
+ except (TypeError,ValueError,AttributeError):return
+ other=1-idx
+ emit("fighter_state",{"x":x,"y":y,"face":face,"color":str(data.get("color","#ff6a58"))[:20]},to=r["players"][other]["sid"])
+@socketio.on("fighter_hit")
+def fighter_hit(data):
+ rid=sid_room.get(request.sid);r=rooms.get(rid or "")
+ if not r or r["status"]!="playing":return
+ idx=next((i for i,p in enumerate(r["players"]) if p["sid"]==request.sid),None)
+ if idx is None:return
+ try:
+  damage=max(1,min(30,int(data.get("damage",8))))
+  dist=float(data.get("range",999));height=float(data.get("height",999))
+ except (TypeError,ValueError,AttributeError):return
+ if dist>125 or height>75:return
+ opp=1-idx;r["hp"][opp]=max(0,r["hp"][opp]-damage)
+ attacker=r["players"][idx];victim=r["players"][opp]
+ winner=None
+ if r["hp"][opp]<=0:
+  winner=attacker;r["status"]="finished"
+  with db() as c:
+   c.execute("UPDATE users SET wins=wins+1,coins=coins+50 WHERE id=?",(attacker["uid"],))
+   c.execute("UPDATE users SET coins=coins+10 WHERE id=?",(victim["uid"],))
+ emit("fighter_hit",{"hp":r["hp"][idx],"oppHp":r["hp"][opp],"line":attacker["nickname"]+" 공격! -"+str(damage)+" HP","winner":winner["nickname"] if winner else None},room=rid)
+ if winner:emit("match_finished",{"winner":winner["nickname"],"reward":50},room=rid)
+
 @socketio.on("disconnect")
 def disconnected():
  rid=sid_room.pop(request.sid,None)
