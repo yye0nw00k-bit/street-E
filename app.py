@@ -79,7 +79,9 @@ def login():
  msg=""
  if request.method=="POST":
   login_name=request.form.get("username","").strip()
-  with db() as c: u=c.execute("SELECT * FROM users WHERE username=? COLLATE NOCASE OR nickname=? COLLATE NOCASE",(login_name,login_name)).fetchone()
+  with db() as c:
+   u=c.execute("SELECT * FROM users WHERE username=? COLLATE NOCASE",(login_name,)).fetchone()
+   if not u: u=c.execute("SELECT * FROM users WHERE nickname=? COLLATE NOCASE",(login_name,)).fetchone()
   if not u or not check_password_hash(u["password_hash"],request.form.get("password","")): msg="아이디 또는 비밀번호를 확인하세요."
   elif u["banned"]: msg="이 계정은 이용 정지 상태입니다."
   else:
