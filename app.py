@@ -88,8 +88,8 @@ def logout(): session.clear(); return redirect("/")
 def lobby():
  u=current_user()
  chars=''.join(f'<button class="fighter" onclick="pick(\'{x["id"]}\',this)"><b>{x["name"]}</b><br>{x["style"]}<br>HP {x["hp"]} · 공격 {x["power"]}</button>' for x in FIGHTERS)
- body=f'''<main class="wrap"><p class="lime">STREET E / FIGHT CLUB</p><h1>전투 준비</h1><div class="panel">플레이어 <b>{u["nickname"]}</b>　·　코인 <b id="coins">{u["coins"]}</b> C　·　승리 <b>{u["wins"]}</b></div>
-<section class="panel"><h2>파이터 선택</h2><div class="grid">{chars}</div><div class="row"><button class="primary" onclick="joinQueue()">온라인 1대1 찾기</button><button onclick="practice()">AI 연습</button><button onclick="stopFight()">전투 나가기</button></div><p id="status" class="muted">파이터를 선택하고 전투를 시작하세요.</p></section>
+ body=r'''<main class="wrap"><p class="lime">STREET E / FIGHT CLUB</p><h1>전투 준비</h1><div class="panel">플레이어 <b>__NICK__</b>　·　코인 <b id="coins">__COINS__</b> C　·　승리 <b>__WINS__</b></div>
+<section class="panel"><h2>파이터 선택</h2><div class="grid">__CHARS__</div><div class="row"><button class="primary" onclick="joinQueue()">온라인 1대1 찾기</button><button onclick="practice()">AI 연습</button><button onclick="stopFight()">전투 나가기</button></div><p id="status" class="muted">파이터를 선택하고 전투를 시작하세요.</p></section>
 <section id="fightPanel" class="panel" hidden><div class="fight-head"><div><b id="p1">PLAYER</b><div class="health"><div id="bar0" style="width:100%"></div></div><span id="hp0">100</span> HP</div><div class="vs">VS</div><div style="text-align:right"><b id="p2">RIVAL</b><div class="health"><div id="bar1" style="width:100%"></div></div><span id="hp1">100</span> HP</div></div>
 <canvas id="arena" width="900" height="420" aria-label="격투 게임 화면"></canvas><div class="controls-note">이동 <b>A / D</b> · 점프 <b>W</b> · 빠른 공격 <b>J</b> · 강공격 <b>K</b> · 필살기 <b>L</b></div><div class="mobile-controls"><button onpointerdown="keys.left=true" onpointerup="keys.left=false" onpointerleave="keys.left=false">◀</button><button onpointerdown="keys.right=true" onpointerup="keys.right=false" onpointerleave="keys.right=false">▶</button><button onpointerdown="jump()">점프</button><button onpointerdown="attack('j')">J 공격</button><button onpointerdown="attack('k')">K 강공격</button><button onpointerdown="attack('l')">필살기</button></div><div id="logs" class="logs">대전 준비 중…</div></section>
 <section class="panel"><h2>진행 중인 대전</h2><button onclick="refreshRooms()">목록 새로고침</button><div id="rooms">불러오는 중…</div></section></main>
@@ -124,6 +124,7 @@ window.addEventListener('keyup',e=>{if(e.key.toLowerCase()==='a')keys.left=false
 function refreshRooms(){fetch('/api/rooms').then(r=>r.json()).then(rs=>{let e=document.getElementById('rooms');e.replaceChildren();let live=rs.filter(x=>x.status==='playing');if(!live.length){e.textContent='현재 진행 중인 대전이 없어요.';return}live.forEach(x=>{let b=document.createElement('button');b.textContent='대전 '+x.id+' 관전';b.onclick=()=>socket&&socket.emit('spectate',{room:x.id});e.append(b)})}).catch(()=>{})}
 if(socket){socket.on('connect',refreshRooms);socket.on('queue_status',d=>status(d.message));socket.on('match_found',d=>{mode='online';roomId=d.room;me.hp=100;foe.hp=100;me.x=d.index===0?170:700;foe.x=d.index===0?700:170;me.face=me.x<foe.x?1:-1;document.getElementById('p1').textContent=d.players[d.index||0].nickname;document.getElementById('p2').textContent=d.players[(d.index===0?1:0)].nickname;document.getElementById('logs').textContent='대전 시작!';status('대전 시작!');showFight();refreshRooms()});socket.on('fighter_state',d=>{if(mode==='online'){foe.x=d.x;foe.y=d.y;foe.face=d.face;foe.color=d.color||'#ff6a58'}});socket.on('fighter_hit',d=>{if(mode==='online'){foe.hp=d.hp;me.hp=d.oppHp;log(d.line);updateBars();if(d.winner)status(d.winner+' 승리!')}});socket.on('fight_update',d=>{if(mode==='online'){me.hp=d.hp[0];foe.hp=d.hp[1];updateBars()}});socket.on('match_finished',d=>{status(d.message||d.winner+' 승리!');fetch('/api/me').then(r=>r.json()).then(x=>document.getElementById('coins').textContent=x.coins);refreshRooms()});socket.on('spectate_state',d=>{mode='spectate';me.hp=d.hp[0];foe.hp=d.hp[1];document.getElementById('p1').textContent=d.players[0].nickname;document.getElementById('p2').textContent=d.players[1].nickname;status('관전 중');showFight()})}
 </script>'''
+ body=body.replace('__NICK__',u['nickname']).replace('__COINS__',str(u['coins'])).replace('__WINS__',str(u['wins'])).replace('__CHARS__',chars)
  return page("로비",body)
 
 @app.route("/api/me")
@@ -236,7 +237,7 @@ def fighter_hit(data):
   with db() as c:
    c.execute("UPDATE users SET wins=wins+1,coins=coins+50 WHERE id=?",(attacker["uid"],))
    c.execute("UPDATE users SET coins=coins+10 WHERE id=?",(victim["uid"],))
- emit("fighter_hit",{"hp":r["hp"][idx],"oppHp":r["hp"][opp],"line":attacker["nickname"]+" 공격! -"+str(damage)+" HP","winner":winner["nickname"] if winner else None},room=rid)
+ emit("fighter_hit",{"hp":r["hp"][idx],"oppHp":r["hp"][opp],"line":attacker["nickname"]+" 공격! -"+str(damage)+" HP","winner":winner["nickname"] if winner else None},to=attacker["sid"]);emit("fighter_hit",{"hp":r["hp"][opp],"oppHp":r["hp"][idx],"line":attacker["nickname"]+" 공격! -"+str(damage)+" HP","winner":winner["nickname"] if winner else None},to=victim["sid"])
  if winner:emit("match_finished",{"winner":winner["nickname"],"reward":50},room=rid)
 
 @socketio.on("disconnect")
