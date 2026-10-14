@@ -76,7 +76,8 @@ def signup():
 def login():
  msg=""
  if request.method=="POST":
-  with db() as c: u=c.execute("SELECT * FROM users WHERE username=? COLLATE NOCASE",(request.form.get("username","").strip(),)).fetchone()
+  login_name=request.form.get("username","").strip()
+  with db() as c: u=c.execute("SELECT * FROM users WHERE username=? COLLATE NOCASE OR nickname=? COLLATE NOCASE",(login_name,login_name)).fetchone()
   if not u or not check_password_hash(u["password_hash"],request.form.get("password","")): msg="아이디 또는 비밀번호를 확인하세요."
   elif u["banned"]: msg="이 계정은 이용 정지 상태입니다."
   else:
@@ -85,7 +86,7 @@ def login():
    session["uid"]=int(u["id"])
    session.modified=True
    return redirect(url_for("lobby"))
- return page("로그인",f'<main class="auth"><h1>다시 만나서 반가워요.</h1><p>{msg}</p><form class="form" method="post"><label>아이디<input name="username" required></label><label>비밀번호<input name="password" type="password" required></label><button class="primary">로그인</button></form><a href="/signup">회원가입</a></main>')
+ return page("로그인",f'<main class="auth"><h1>다시 만나서 반가워요.</h1><p>{msg}</p><form class="form" method="post"><label>아이디 또는 닉네임<input name="username" autocomplete="username" required></label><label>비밀번호<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">로그인</button></form><a href="/signup">회원가입</a></main>')
 @app.route("/logout")
 def logout(): session.clear(); return redirect("/")
 @app.route("/lobby")
