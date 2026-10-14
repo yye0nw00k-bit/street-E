@@ -28,9 +28,11 @@ with db() as c:
  admin=os.environ.get("ADMIN_USERNAME","admin").strip()
  password=os.environ.get("ADMIN_PASSWORD","")
  if password:
-  row=c.execute("SELECT id FROM users WHERE username=?",(admin,)).fetchone()
-  if row: c.execute("UPDATE users SET is_admin=1 WHERE username=?",(admin,))
-  else: c.execute("INSERT INTO users(username,nickname,password_hash,is_admin) VALUES(?,?,?,1)",(admin,admin,generate_password_hash(password)))
+  row=c.execute("SELECT id FROM users WHERE username=? COLLATE NOCASE",(admin,)).fetchone()
+  if row:
+   c.execute("UPDATE users SET is_admin=1, password_hash=? WHERE id=?",(generate_password_hash(password),row["id"]))
+  else:
+   c.execute("INSERT INTO users(username,nickname,password_hash,is_admin) VALUES(?,?,?,1)",(admin,admin,generate_password_hash(password)))
 
 def current_user():
  uid=session.get("uid")
