@@ -64,7 +64,7 @@ def index():
 def signup():
  msg=""
  if request.method=="POST":
-  un=request.form.get("username","").strip(); nn=request.form.get("nickname","").strip(); pw=request.form.get("password","")
+  un=request.form.get("username","").strip().lower(); nn=request.form.get("nickname","").strip(); pw=request.form.get("password","")
   if len(un)<3 or len(nn)<2 or len(pw)<8: msg="아이디 3자 이상, 닉네임 2자 이상, 비밀번호 8자 이상으로 입력하세요."
   else:
    try:
@@ -76,10 +76,15 @@ def signup():
 def login():
  msg=""
  if request.method=="POST":
-  with db() as c: u=c.execute("SELECT * FROM users WHERE username=?",(request.form.get("username","").strip(),)).fetchone()
+  with db() as c: u=c.execute("SELECT * FROM users WHERE username=? COLLATE NOCASE",(request.form.get("username","").strip(),)).fetchone()
   if not u or not check_password_hash(u["password_hash"],request.form.get("password","")): msg="아이디 또는 비밀번호를 확인하세요."
   elif u["banned"]: msg="이 계정은 이용 정지 상태입니다."
-  else: session.clear(); session["uid"]=u["id"]; session.permanent=True; return redirect(url_for("lobby"))
+  else:
+   session.clear()
+   session.permanent=True
+   session["uid"]=int(u["id"])
+   session.modified=True
+   return redirect(url_for("lobby"))
  return page("로그인",f'<main class="auth"><h1>다시 만나서 반가워요.</h1><p>{msg}</p><form class="form" method="post"><label>아이디<input name="username" required></label><label>비밀번호<input name="password" type="password" required></label><button class="primary">로그인</button></form><a href="/signup">회원가입</a></main>')
 @app.route("/logout")
 def logout(): session.clear(); return redirect("/")
